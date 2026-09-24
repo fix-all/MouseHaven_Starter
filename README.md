@@ -24,6 +24,8 @@ Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile '.tools/dotne
 
 ## 发布与运行
 
+公开下载：[v0.1.0-p0 预发布版](https://github.com/fix-all/MouseHaven_Starter/releases/tag/v0.1.0-p0)。该版本的真实桌面交互与性能仍待验收。
+
 ```powershell
 & $Dotnet publish .\src\MouseHaven.Windows\MouseHaven.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\publish\MouseHaven-win-x64
 & '.\publish\MouseHaven-win-x64\MouseHaven.Windows.exe'
