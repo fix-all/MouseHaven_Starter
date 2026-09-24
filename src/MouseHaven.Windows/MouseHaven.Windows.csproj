@@ -10,5 +10,13 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MouseHaven.Core\MouseHaven.Core.csproj" />
+    <EmbeddedResource Include="..\..\assets\previews\mouse-p0-v2-preview.png" LogicalName="MouseHaven.SpritePreview" />
+    <EmbeddedResource Include="..\..\assets\characters\mouse-outdoor-motion.png" LogicalName="MouseHaven.OutdoorMotion" />
+    <EmbeddedResource Include="..\..\assets\characters\mouse-home-work.png" LogicalName="MouseHaven.HomeWork" />
+    <EmbeddedResource Include="..\..\assets\scene\house-side.png" LogicalName="MouseHaven.SceneHouse" />
+    <EmbeddedResource Include="..\..\assets\scene\garden-bare.png" LogicalName="MouseHaven.SceneGardenBare" />
+    <EmbeddedResource Include="..\..\assets\scene\garden-carrots.png" LogicalName="MouseHaven.SceneGardenCarrots" />
+    <EmbeddedResource Include="..\..\assets\scene\flower-patch.png" LogicalName="MouseHaven.SceneFlowers" />
+    <EmbeddedResource Include="..\..\assets\props\desktop-icons-source.png" LogicalName="MouseHaven.PropIcons" />
   </ItemGroup>
 </Project>

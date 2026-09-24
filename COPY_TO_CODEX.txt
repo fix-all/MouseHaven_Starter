@@ -1,3 +1,5 @@
+【历史 P0 启动任务，已执行；当前阶段请以 AGENTS.md 和 docs/2D_VISUAL_TASK.md 为准，不要重复提交本文件作为新的实施范围。】
+
 请先阅读根目录 AGENTS.md，以及 docs/PRODUCT.md、docs/P0_TASK.md、docs/ACCEPTANCE.md。
 
 然后直接实现 P0，不要只给方案，不要扩展为完整游戏。

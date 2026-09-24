@@ -3,6 +3,8 @@ namespace MouseHaven.Core;
 public enum HomeMode { Micro, Expanded }
 public enum CharacterOwner { Home, Desktop }
 public enum MouseAction { Idle, Walk, Work, ExitHome, Roam, Nibble, Startled, ReturnHome, Hide }
+public enum Facing { Left, Right }
+public enum GardenStage { Bare, Carrots }
 
 public readonly record struct Point2(double X, double Y)
 {
@@ -30,9 +32,13 @@ public sealed class WorldState
     public HomeMode Mode { get; internal set; } = HomeMode.Micro;
     public CharacterOwner Owner { get; internal set; } = CharacterOwner.Home;
     public MouseAction Action { get; internal set; } = MouseAction.Idle;
-    public double HomeX { get; internal set; } = 160;
+    public Facing Facing { get; internal set; } = Facing.Right;
+    public GardenStage Garden { get; internal set; } = GardenStage.Bare;
+    public bool FolderBitten { get; internal set; }
+    public double HomeX { get; internal set; } = World.HomeEntranceX;
     public Point2 DesktopPosition { get; internal set; }
     public Point2 HomeEntry { get; internal set; }
+    public Point2 FolderPosition { get; internal set; }
     public Point2 FolderTarget { get; internal set; }
     public string PlaceId { get; internal set; } = "home";
     public string SegmentId { get; internal set; } = "idle";
@@ -45,6 +51,8 @@ public sealed class WorldState
 public sealed class World
 {
     public const double HomeEntranceX = 60;
+    public const double GardenInteractionX = 278;
+    private enum HomeGoal { Garden, Entrance }
     private readonly IClock _clock;
     private readonly Random _random;
     private TimeSpan _last;
@@ -52,6 +60,7 @@ public sealed class World
     private double _homeStart;
     private double _homeTarget;
     private Point2 _desktopStart;
+    private HomeGoal _homeGoal;
 
     public WorldState State { get; } = new();
 
@@ -64,6 +73,7 @@ public sealed class World
 
     public void SetMode(HomeMode mode) => State.Mode = mode;
     public void SetHomeEntry(Point2 entry) => State.HomeEntry = entry;
+    public void SetFolderPosition(Point2 position) => State.FolderPosition = position;
     public void SetFolderTarget(Point2 target) => State.FolderTarget = target;
 
     public bool TryStartDemo()
@@ -71,7 +81,9 @@ public sealed class World
         if (State.Paused || State.Owner != CharacterOwner.Home || State.Mode != HomeMode.Micro ||
             State.Action is MouseAction.ExitHome or MouseAction.Hide) return false;
         State.DemoActive = true;
-        BeginHomeTravel(MouseAction.ExitHome, HomeEntranceX);
+        State.FolderBitten = false;
+        _last = _clock.Now;
+        BeginHomeTravel(MouseAction.ExitHome, HomeEntranceX, HomeGoal.Entrance);
         return true;
     }
 
@@ -79,6 +91,8 @@ public sealed class World
     {
         if (State.Paused || State.Owner != CharacterOwner.Desktop ||
             State.Action is MouseAction.Startled or MouseAction.ReturnHome or MouseAction.Hide) return false;
+        _last = _clock.Now;
+        FaceToward(State.HomeEntry.X - State.DesktopPosition.X);
         SetAction(MouseAction.Startled, "startled");
         _remaining = 0.22;
         return true;
@@ -106,10 +120,11 @@ public sealed class World
             case MouseAction.Idle:
                 _remaining -= seconds;
                 if (_remaining <= 0)
-                    BeginHomeTravel(MouseAction.Walk, 105 + _random.NextDouble() * 520);
+                    BeginHomeTravel(MouseAction.Walk, GardenInteractionX, HomeGoal.Garden);
                 break;
             case MouseAction.Walk:
             case MouseAction.ExitHome:
+                FaceToward(_homeTarget - State.HomeX);
                 State.HomeX = Move(State.HomeX, _homeTarget, 42 * seconds);
                 UpdateHomeProgress();
                 if (Math.Abs(State.HomeX - _homeTarget) < 0.001)
@@ -120,27 +135,38 @@ public sealed class World
                         State.PlaceId = "desktop";
                         State.DesktopPosition = State.HomeEntry;
                         _desktopStart = State.DesktopPosition;
+                        FaceToward(State.FolderTarget.X - State.DesktopPosition.X);
                         SetAction(MouseAction.Roam, "entry-to-folder");
                     }
                     else
                     {
-                        SetAction(MouseAction.Work, "work");
-                        _remaining = 2.2;
+                        if (_homeGoal == HomeGoal.Garden)
+                        {
+                            SetAction(MouseAction.Work, "garden-work");
+                            _remaining = 2.2;
+                        }
+                        else BeginIdle();
                     }
                 }
                 break;
             case MouseAction.Work:
                 _remaining -= seconds;
-                if (_remaining <= 0) BeginIdle();
+                if (_remaining <= 0)
+                {
+                    State.Garden = State.Garden == GardenStage.Bare ? GardenStage.Carrots : GardenStage.Bare;
+                    BeginHomeTravel(MouseAction.Walk, HomeEntranceX, HomeGoal.Entrance);
+                }
                 break;
             case MouseAction.Roam:
+                FaceToward(State.FolderTarget.X - State.DesktopPosition.X);
                 State.DesktopPosition = State.DesktopPosition.MoveToward(State.FolderTarget, 76 * seconds);
                 UpdateDesktopProgress(_desktopStart, State.FolderTarget);
                 if (State.DesktopPosition.DistanceTo(State.FolderTarget) < 0.001)
                     SetAction(MouseAction.Nibble, "nibble");
                 break;
             case MouseAction.Nibble:
-                break; // stays at the self-drawn prop until clicked
+                if (State.ActionSeconds >= 0.6) State.FolderBitten = true;
+                break; // the same self-drawn prop stays in place until clicked
             case MouseAction.Startled:
                 _remaining -= seconds;
                 if (_remaining <= 0)
@@ -150,6 +176,7 @@ public sealed class World
                 }
                 break;
             case MouseAction.ReturnHome:
+                FaceToward(State.HomeEntry.X - State.DesktopPosition.X);
                 State.DesktopPosition = State.DesktopPosition.MoveToward(State.HomeEntry, 105 * seconds);
                 UpdateDesktopProgress(_desktopStart, State.HomeEntry);
                 if (State.DesktopPosition.DistanceTo(State.HomeEntry) < 0.001)
@@ -186,11 +213,20 @@ public sealed class World
         _remaining = 0.8 + _random.NextDouble() * 1.3;
     }
 
-    private void BeginHomeTravel(MouseAction action, double target)
+    private void BeginHomeTravel(MouseAction action, double target, HomeGoal goal)
     {
         _homeStart = State.HomeX;
         _homeTarget = target;
-        SetAction(action, action == MouseAction.ExitHome ? "to-entrance" : "home-walk");
+        _homeGoal = goal;
+        FaceToward(target - State.HomeX);
+        SetAction(action, action == MouseAction.ExitHome ? "to-entrance" :
+            goal == HomeGoal.Garden ? "entrance-to-garden" : "garden-to-entrance");
+    }
+
+    private void FaceToward(double deltaX)
+    {
+        if (deltaX > 0.001) State.Facing = Facing.Right;
+        else if (deltaX < -0.001) State.Facing = Facing.Left;
     }
 
     private void SetAction(MouseAction action, string segment)

@@ -1,6 +1,6 @@
-# MouseHaven P0 · Windows 桌面交互原型
+# MouseHaven · 横版 2D 视觉闭环试用版
 
-这是可构建的 P0 原型源码，使用原创程序绘制占位图。当前实现范围为微型与展开横版家园、单一鼠鼠状态、托盘外出演示和受惊回家。最大化 2.5D 属于下一轮，本程序没有该按钮。此原型未通过真实用户桌面的完整验收，详见 [P0 报告](docs/P0_REPORT.md)。
+这是在 P0 小窗口与单一世界状态上完成的一段横版生活与外出演出：小屋→菜地干活→胡萝卜出现→回小屋；托盘触发桌面外出、靠近同一个模拟文件夹啃咬、受惊跑回当前入口。托盘可切换 1×/2× 展开镜头和几何调试画法。最大化 2.5D 属于后续正式需求，本程序没有该按钮。真实桌面验收和性能结论见 [2D 视觉报告](docs/2D_VISUAL_REPORT.md)，历史 P0 记录仍在 [P0 报告](docs/P0_REPORT.md)。
 
 ## 环境与构建
 
@@ -11,6 +11,7 @@ $Dotnet = if (Test-Path '.\.tools\dotnet\dotnet.exe') { '.\.tools\dotnet\dotnet.
 & $Dotnet --info
 & $Dotnet build .\MouseHaven.slnx -c Release
 & $Dotnet run --project .\tests\MouseHaven.Core.Tests\MouseHaven.Core.Tests.csproj -c Release
+& $Dotnet run --project .\tests\MouseHaven.Windows.Tests\MouseHaven.Windows.Tests.csproj -c Release
 & $Dotnet run --project .\src\MouseHaven.Windows\MouseHaven.Windows.csproj -c Release
 ```
 
@@ -24,19 +25,20 @@ Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile '.tools/dotne
 
 ## 发布与运行
 
-公开下载：[v0.1.0-p0 预发布版](https://github.com/fix-all/MouseHaven_Starter/releases/tag/v0.1.0-p0)。该版本的真实桌面交互与性能仍待验收。
+公开下载的 [v0.1.0-p0 预发布版](https://github.com/fix-all/MouseHaven_Starter/releases/tag/v0.1.0-p0) 是旧几何占位原型。下列命令生成当前本地 2D 视觉试用版：
 
 ```powershell
-& $Dotnet publish .\src\MouseHaven.Windows\MouseHaven.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\publish\MouseHaven-win-x64
-& '.\publish\MouseHaven-win-x64\MouseHaven.Windows.exe'
+& $Dotnet publish .\src\MouseHaven.Windows\MouseHaven.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\publish\MouseHaven-2d-visual-win-x64
+& '.\publish\MouseHaven-2d-visual-win-x64\MouseHaven.Windows.exe'
 ```
 
-`publish/MouseHaven-win-x64/MouseHaven.Windows.exe` 是自包含的 Release 程序。发布成功仅表示已生成程序，不代表透明命中、焦点、DPI、视觉或性能已在真实桌面通过。
+该目录下的 `MouseHaven.Windows.exe` 为自包含 Release 程序。构建和离屏渲染不能证明真实桌面的透明命中、焦点、DPI 或性能已通过。
 
 ## 操作
 
 - 启动后，默认右下角附近出现 40×40 逻辑像素的家园观察口。单击展开为 480×270 的 16:9 横版画面；单击右上角减号收起。按住鼠标左键拖动家园可改位置。
-- 托盘菜单可暂停/恢复、显示/隐藏家园、切换 32/40/48/64 微型尺寸、重置位置、启动“演示外出”和退出。家园右键也有菜单。
+- 托盘菜单可暂停/恢复、显示/隐藏家园、切换 32/40/48/64 微型尺寸、设置展开镜头 1×/2×、重置位置、启动“演示外出”和退出。家园右键也有菜单。
+- 默认显示侧视像素小屋、菜地、花圃与多帧鼠鼠。托盘“侧视像素场景”可切换到旧几何调试画法，不重置动作与位置。外出的鼠鼠只使用约 48×44 逻辑像素的小窗口。
 - 在微型、鼠鼠在家且未暂停时，先显示桌面，再从托盘启动外出演示。鼠鼠走出家园，到程序自绘的模拟文件夹旁；单击外出的鼠鼠后她跑回当前家园入口。家园不会自行展开。
 - “诊断记录”开关每 5 秒将模式、角色归属、动作、绘制次数、进程 CPU 累计时间、工作集与私有字节写入 `%LOCALAPPDATA%\MouseHaven\diagnostics.log`。位置和尺寸存于同一目录的 `settings.json`；损坏设置会恢复默认并提示。
 
@@ -45,7 +47,8 @@ Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile '.tools/dotne
 ## 目录
 
 - `src/MouseHaven.Core`：单一世界状态、时钟、行为与设置验证。
-- `src/MouseHaven.Windows`：小尺寸 Win32 分层窗口、程序绘制、托盘和本地设置。
-- `tests/MouseHaven.Core.Tests`：无需外部测试包的确定性核心测试。
-- `assets/README.md`：占位美术来源与替换边界。
-- `docs/PRODUCT.md`、`docs/P0_TASK.md`、`docs/ACCEPTANCE.md`：原始规格与验收项。
+- `src/MouseHaven.Windows`：小尺寸 Win32 分层窗口、缓存的场景与角色图集、镜头、托盘和本地设置。
+- `tests/MouseHaven.Core.Tests`、`tests/MouseHaven.Windows.Tests`：确定性状态、资源边界、动作帧、根节点和文件夹连续性测试。
+- `assets/README.md`：侧视资源清单与来源。
+- `docs/2D_VISUAL_TASK.md`、`docs/2D_VISUAL_ACCEPTANCE.md`：当前阶段范围与验收。
+- `docs/PRODUCT.md`、`docs/P0_TASK.md`、`docs/ACCEPTANCE.md`：产品与历史 P0 规格。

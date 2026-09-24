@@ -8,7 +8,11 @@ var tests = new (string Name, Action Run)[]
     ("暂停恢复不补播积压时间", PauseDoesNotReplay),
     ("固定随机种子行为可重现", FixedSeedIsRepeatable),
     ("外出演示仅从微型家园启动", DemoGate),
-    ("损坏或越界设置恢复默认", InvalidSettingsRecover)
+    ("损坏或越界设置恢复默认", InvalidSettingsRecover),
+    ("静止啃咬后受惊不跳过动作", StartleAfterLongStaticNibble),
+    ("菜地交互点与可见作物状态", GardenWorkAtFixedPlace),
+    ("家园与桌面左右朝向", FacingFollowsMovement),
+    ("同一模拟文件夹在啃咬前后保持位置", FolderContinuity)
 };
 var failures = 0;
 foreach (var (name, run) in tests)
@@ -114,11 +118,74 @@ static void InvalidSettingsRecover()
         area, out var valid) && valid.MicroSize == 48 && valid.Diagnostics, "合法设置被拒绝");
 }
 
+static void StartleAfterLongStaticNibble()
+{
+    var (world, clock) = NewDemo();
+    Until(world, clock, () => world.State.Action == MouseAction.Nibble);
+    clock.Elapsed += TimeSpan.FromMinutes(3); // a suspended process must not skip the startled pose
+    Check(world.Startle(), "长时间静止后未能受惊");
+    Step(world, clock, 0.033);
+    Check(world.State.Action == MouseAction.Startled, "受惊动作被积压时间直接跳过");
+}
+
+static void GardenWorkAtFixedPlace()
+{
+    var clock = new FakeClock();
+    var world = new World(clock);
+    Until(world, clock, () => world.State.Action == MouseAction.Work);
+    Check(world.State.HomeX == World.GardenInteractionX, "工作发生在菜地以外");
+    Check(world.State.Garden == GardenStage.Bare, "工作前作物已变化");
+    Until(world, clock, () => world.State.Garden == GardenStage.Carrots);
+    Check(world.State.Action == MouseAction.Walk && world.State.Facing == Facing.Left,
+        "工作完成后未带着可见作物变化回小屋");
+    Until(world, clock, () => world.State.Action == MouseAction.Idle);
+    Check(world.State.HomeX == World.HomeEntranceX, "没有回到小屋入口");
+}
+
+static void FacingFollowsMovement()
+{
+    var clock = new FakeClock();
+    var world = new World(clock);
+    Until(world, clock, () => world.State.Action == MouseAction.Walk);
+    Check(world.State.Facing == Facing.Right, "向右去菜地时朝向错误");
+    Until(world, clock, () => world.State.Action == MouseAction.Work);
+    Until(world, clock, () => world.State.Action == MouseAction.Walk);
+    Check(world.State.Facing == Facing.Left, "向左回小屋时朝向错误");
+
+    var outsideClock = new FakeClock();
+    var outside = new World(outsideClock);
+    outside.SetHomeEntry(new Point2(300, 100));
+    outside.SetFolderTarget(new Point2(100, 100));
+    Check(outside.TryStartDemo(), "向左外出演示不能启动");
+    Until(outside, outsideClock, () => outside.State.Owner == CharacterOwner.Desktop);
+    Check(outside.State.Facing == Facing.Left, "桌面目标在左侧却朝右");
+    Until(outside, outsideClock, () => outside.State.Action == MouseAction.Nibble);
+    Check(outside.Startle() && outside.State.Facing == Facing.Right, "受惊回家未转向右侧入口");
+}
+
+static void FolderContinuity()
+{
+    var (world, clock) = NewDemo();
+    var original = world.State.FolderPosition;
+    Until(world, clock, () => world.State.Action == MouseAction.Nibble);
+    Check(world.State.FolderPosition == original && !world.State.FolderBitten,
+        "啃咬开始前文件夹被替换");
+    for (var i = 0; i < 25; i++) Step(world, clock, 0.033);
+    Check(world.State.FolderBitten && world.State.FolderPosition == original,
+        "啃咬后文件夹位置改变或未出现咬痕");
+    Check(world.Startle(), "啃咬后不能受惊");
+    world.SetHomeEntry(new Point2(50, 160));
+    Until(world, clock, () => world.State.Action == MouseAction.ReturnHome);
+    Check(world.State.FolderPosition == original && world.State.FolderBitten,
+        "回程中模拟文件夹消失或重置");
+}
+
 static (World, FakeClock) NewDemo()
 {
     var clock = new FakeClock();
     var world = new World(clock);
     world.SetHomeEntry(new Point2(100, 100));
+    world.SetFolderPosition(new Point2(220, 130));
     world.SetFolderTarget(new Point2(220, 130));
     Check(world.TryStartDemo(), "演示不能启动");
     return (world, clock);

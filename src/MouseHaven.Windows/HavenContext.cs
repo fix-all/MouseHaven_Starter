@@ -26,12 +26,18 @@ internal sealed class HavenContext : ApplicationContext
     private ToolStripMenuItem _showMenu = null!;
     private ToolStripMenuItem _diagnosticsMenu = null!;
     private ToolStripMenuItem _sizesMenu = null!;
+    private ToolStripMenuItem _spriteMenu = null!;
+    private ToolStripMenuItem _zoom1Menu = null!;
+    private ToolStripMenuItem _zoom2Menu = null!;
     private readonly string? _loadWarning;
 
     internal HavenContext()
     {
         _work = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         (_settings, _loadWarning) = SettingsStore.Load(_work);
+        _home.Text = "MouseHaven 家园";
+        _mouse.Text = "MouseHaven 鼠鼠";
+        _folder.Text = "MouseHaven 模拟文件夹";
         _home.MouseDown += HomeMouseDown;
         _home.MouseMove += HomeMouseMove;
         _home.MouseUp += HomeMouseUp;
@@ -46,7 +52,7 @@ internal sealed class HavenContext : ApplicationContext
 
         _home.Location = new Point(_settings.X, _settings.Y);
         _home.SetLogicalSize(_settings.MicroSize, _settings.MicroSize);
-        _mouse.SetLogicalSize(32, 32);
+        _mouse.SetLogicalSize(_artwork.DesktopSurfaceSize.Width, _artwork.DesktopSurfaceSize.Height);
         _folder.SetLogicalSize(48, 48);
         _home.Show();
 
@@ -75,11 +81,19 @@ internal sealed class HavenContext : ApplicationContext
         }
         var menu = new ContextMenuStrip();
         _menu = menu;
+        _spriteMenu = new ToolStripMenuItem("侧视像素场景", null, (_, _) => TogglePixelArt())
+        { Checked = _artwork.UsePixelArt };
+        var zoomMenu = new ToolStripMenuItem("展开镜头倍率");
+        _zoom1Menu = new ToolStripMenuItem("1×", null, (_, _) => SetExpandedZoom(1));
+        _zoom2Menu = new ToolStripMenuItem("2×", null, (_, _) => SetExpandedZoom(2)) { Checked = true };
+        zoomMenu.DropDownItems.AddRange([_zoom1Menu, _zoom2Menu]);
         menu.Items.AddRange([
             _pauseMenu,
             _showMenu,
             new ToolStripMenuItem("展开 / 收起家园", null, (_, _) => ToggleMode()),
             sizes,
+            _spriteMenu,
+            zoomMenu,
             new ToolStripMenuItem("演示外出", null, (_, _) => StartDemo()),
             new ToolStripMenuItem("重置位置", null, (_, _) => ResetPosition()),
             _diagnosticsMenu,
@@ -139,12 +153,14 @@ internal sealed class HavenContext : ApplicationContext
         var beforeAction = _world.State.Action;
         var beforeOwner = _world.State.Owner;
         var beforeHomeX = _world.State.HomeX;
+        var beforeGarden = _world.State.Garden;
+        var beforeBitten = _world.State.FolderBitten;
         _world.Advance();
         var s = _world.State;
-        var homeDirty = beforeOwner != s.Owner || beforeAction != s.Action ||
+        var homeDirty = beforeOwner != s.Owner || beforeAction != s.Action || beforeGarden != s.Garden ||
             Math.Abs(beforeHomeX - s.HomeX) > 0.001 ||
             (s.Owner == CharacterOwner.Home && s.Action == MouseAction.Work);
-        RefreshView(homeDirty, beforeAction != s.Action);
+        RefreshView(homeDirty, beforeAction != s.Action || beforeBitten != s.FolderBitten);
     }
 
     private void UpdateTargets()
@@ -154,9 +170,16 @@ internal sealed class HavenContext : ApplicationContext
         var entry = new Point2(_home.Left + local.X * _home.DpiScale, _home.Top + local.Y * _home.DpiScale);
         _world.SetHomeEntry(entry);
         var direction = entry.X + 235 < _work.Right ? 1 : -1;
-        var target = new Point2(Math.Clamp(entry.X + direction * 185, _work.Left + 25, _work.Right - 25),
+        var folder = new Point2(Math.Clamp(entry.X + direction * 185, _work.Left + 25, _work.Right - 25),
             Math.Clamp(entry.Y + 62, _work.Top + 25, _work.Bottom - 25));
-        if (!s.DemoActive) _world.SetFolderTarget(target);
+        if (!s.DemoActive)
+        {
+            _world.SetFolderPosition(folder);
+            var facing = direction > 0 ? Facing.Right : Facing.Left;
+            var mouth = _artwork.NibbleMouthOffset(facing);
+            _world.SetFolderTarget(PlacementMath.NibbleRoot(folder, facing, mouth,
+                _mouse.DpiScale, _folder.DpiScale));
+        }
     }
 
     private void RefreshView(bool homeDirty = true, bool folderDirty = true)
@@ -178,17 +201,17 @@ internal sealed class HavenContext : ApplicationContext
         {
             if (!_mouse.Visible) _mouse.Show();
             var p = s.DesktopPosition;
-            _mouse.Location = new Point((int)Math.Round(p.X - 16 * _mouse.DpiScale),
-                (int)Math.Round(p.Y - 16 * _mouse.DpiScale));
+            _mouse.Location = PlacementMath.ActorTopLeft(p, _artwork.DesktopRoot, _mouse.DpiScale);
             _mouse.Render(g => _artwork.DesktopMouse(g, s));
         }
         else if (_mouse.Visible) _mouse.Hide();
 
-        if (s.DemoActive && s.Owner == CharacterOwner.Desktop && s.Action != MouseAction.Hide)
+        var showFolder = s.DemoActive && s.Owner == CharacterOwner.Desktop && s.Action != MouseAction.Hide;
+        if (showFolder)
         {
             var newlyShown = !_folder.Visible;
             if (!_folder.Visible) _folder.Show();
-            var p = s.FolderTarget;
+            var p = s.FolderPosition;
             _folder.Location = new Point((int)Math.Round(p.X - 24 * _folder.DpiScale),
                 (int)Math.Round(p.Y - 24 * _folder.DpiScale));
             if (folderDirty || newlyShown) _folder.Render(g => _artwork.Folder(g, s));
@@ -253,6 +276,23 @@ internal sealed class HavenContext : ApplicationContext
         RefreshView();
     }
 
+    private void TogglePixelArt()
+    {
+        _artwork.UsePixelArt = !_artwork.UsePixelArt;
+        _spriteMenu.Checked = _artwork.UsePixelArt;
+        var size = _artwork.DesktopSurfaceSize;
+        _mouse.SetLogicalSize(size.Width, size.Height);
+        RefreshView();
+    }
+
+    private void SetExpandedZoom(int zoom)
+    {
+        _artwork.ExpandedZoom = zoom;
+        _zoom1Menu.Checked = zoom == 1;
+        _zoom2Menu.Checked = zoom == 2;
+        RefreshView();
+    }
+
     private void ResetPosition()
     {
         var defaults = SettingsStore.Default(_work);
@@ -313,6 +353,7 @@ internal sealed class HavenContext : ApplicationContext
         if (!_home.IsDisposed && !_home.Disposing) _home.Close();
         if (!_mouse.IsDisposed) _mouse.Close();
         if (!_folder.IsDisposed) _folder.Close();
+        _artwork.Dispose();
         _menu?.Dispose();
         _frame.Dispose();
         _diagnosticsTimer.Dispose();
