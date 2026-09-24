@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MouseHaven.Core/MouseHaven.Core.csproj" />
+    <Project Path="src/MouseHaven.Windows/MouseHaven.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MouseHaven.Core.Tests/MouseHaven.Core.Tests.csproj" />
+  </Folder>
+</Solution>
